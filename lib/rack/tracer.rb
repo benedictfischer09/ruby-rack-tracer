@@ -17,11 +17,9 @@ module Rack
     # @param errors [Array<Class>] An array of error classes to be captured by the tracer
     #        as errors. Errors are **not** muted by the middleware, they're re-raised afterwards.
     def initialize(app, # rubocop:disable Metrics/ParameterLists
-                   tracer: OpenTracing.global_tracer,
-                   errors: [StandardError])
+                   tracer: OpenTracing.global_tracer)
       @app = app
       @tracer = tracer
-      @errors = errors
     end
 
     def call(env)
@@ -47,26 +45,28 @@ module Rack
           'http.url' => env[REQUEST_URI]
         }
       ) do |scope|
-        span = scope.span
-        env['rack.span'] = span
+        begin
+          span = scope.span
+          env['rack.span'] = span
 
-        result = @app.call(env).tap do |status_code, _headers, _body|
-          span.set_tag('http.status_code', status_code)
+          result = @app.call(env).tap do |status_code, _headers, _body|
+            span.set_tag('http.status_code', status_code)
 
-          route = route_from_env(env)
-          span.operation_name = route if route
+            route = route_from_env(env)
+            span.operation_name = route if route
+          end
+        rescue StandardError => e
+          span.set_tag('error', true)
+          span.log_kv(
+            event: 'error',
+            :'error.kind' => e.class.to_s,
+            :'error.object' => e,
+            message: e.message,
+            stack: e.backtrace.join("\n")
+          )
+          raise
         end
-      rescue *@errors => e
-        span.set_tag('error', true)
-        span.log_kv(
-          event: 'error',
-          :'error.kind' => e.class.to_s,
-          :'error.object' => e,
-          message: e.message,
-          stack: e.backtrace.join("\n")
-        )
-        raise
-      end
+        end
 
       result
     end
