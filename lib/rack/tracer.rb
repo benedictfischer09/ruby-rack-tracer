@@ -31,6 +31,13 @@ module Rack
     end
 
     def call(env)
+
+      if OpenTracing.active_span
+        Rails.logger.info("Active span leftover in webserver process")
+        Rails.logger.info OpenTracing.active_span.context.trace_id
+        Rails.logger.info OpenTracing.active_span
+      end
+
       method = env[REQUEST_METHOD]
 
       context = @tracer.extract(OpenTracing::FORMAT_RACK, env) if @trust_incoming_span
