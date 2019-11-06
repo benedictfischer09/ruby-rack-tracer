@@ -65,10 +65,8 @@ module Rack
             stack: e.backtrace.join("\n")
           )
           raise
-        ensure
-          scope.close rescue nil
         end
-        end
+      end
 
       result
     end
